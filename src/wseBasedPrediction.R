@@ -1,21 +1,24 @@
 # Load Hal wavelet estimation module
-WSE_Path = paste0(dirname(rstudioapi::getSourceEditorContext()$path),"/src/waveletShrinkageEstimation.R")
-source(WSE_Path)
+WSEPath = paste0(dirname(rstudioapi::getSourceEditorContext()$path),"/src/WaveletShrinkageEstimation.R")
+source(WSEPath)
 # Load wavelet shrin module
-WaveletTransform_Path = paste0(dirname(rstudioapi::getSourceEditorContext()$path),"/src/waveletTransform.R")
-source(WaveletTransform_Path)
+WaveletTransformPath = paste0(dirname(rstudioapi::getSourceEditorContext()$path),"/src/WaveletTransform.R")
+source(WaveletTransformPath)
 # Load data conversion module
-DT_Path = paste0(dirname(rstudioapi::getSourceEditorContext()$path), "/src/dataTransform.R")
-source(DT_Path)
+DtPath = paste0(dirname(rstudioapi::getSourceEditorContext()$path), "/src/DataTransform.R")
+source(DtPath)
 # Load Threshold Module
-Threshold_Path = paste0(dirname(rstudioapi::getSourceEditorContext()$path), "/src/threshold.R")
-source(Threshold_Path)
+ThresholdPath = paste0(dirname(rstudioapi::getSourceEditorContext()$path), "/src/Threshold.R")
+source(ThresholdPath)
 
-periodicBasedPrediction = function(data, dt, thresholdName, thresholdMode, index, initThresholdvalue, predictionPercentage, term){
-  term = length(data)
-  data = wse(data = data, dt = dt, thresholdName = thresholdName, thresholdMode = thresholdMode , index = index , initThresholdvalue = initThresholdvalue)
-  # set the prediction term
-  predictionTerm = floor((1 - predictionPercentage) * term)
+PeriodicBasedPrediction = function(Data, DataTransform, ThresholdName, ThresholdMode, Index, PredictionPercentage){
+  Term = length(Data)
+  InitThresholdValue = 1
+  Var = 1
+  data = Wse(Data = Data, DataTransform = DataTransform, ThresholdName = ThresholdName, 
+            ThresholdMode = ThresholdMode, Var = Var, Index = Index, InitThresholdValue = InitThresholdValue)
+  # set the prediction Term
+  PredictionTerm = floor((1 - PredictionPercentage) * Term)
 
   # Set the number of CPU cores to use
   num_cores = detectCores()
@@ -23,8 +26,8 @@ periodicBasedPrediction = function(data, dt, thresholdName, thresholdMode, index
   registerDoParallel(cl)
 
   # definition of data
-  Cs = data$cs
-  Ds = data$ds
+  Cs = data$Cs
+  Ds = data$Ds
 
   coeLength = length(Cs)
 
@@ -42,7 +45,7 @@ periodicBasedPrediction = function(data, dt, thresholdName, thresholdMode, index
   # coe_name_list
   coe_name = list("C[4][1]","D[1][1]","D[1][2]","D[1][3]","D[1][4]","D[2][1]","D[2][2]","D[3][1]")
 
-  for(j in seq(1, length(Ds) - predictionTerm, by=1)){
+  for(j in seq(1, length(Ds) - PredictionTerm, by=1)){
   tmp_Cs_4_1 = c(tmp_Cs_4_1,Cs[[j]][[4]][1])
 
   tmp_Ds_2_1 = c(tmp_Ds_2_1,Ds[[j]][[2]][1])
@@ -64,7 +67,7 @@ periodicBasedPrediction = function(data, dt, thresholdName, thresholdMode, index
 
   # cal coe in regression function
   run_regression = function(j) {
-      x = c(1:(coeLength - predictionTerm))
+      x = c(1:(coeLength - PredictionTerm))
       a_data = data.frame(mse = numeric(), a = numeric(), b = numeric(), c = numeric(), d = numeric())
       coe = list(tmp_Cs_4_1,tmp_Ds_2_1,tmp_Ds_2_2,tmp_Ds_2_3,tmp_Ds_2_4,tmp_Ds_3_1,tmp_Ds_3_2,tmp_Ds_4_1)
       tmp_coe = unlist(coe[[j]])
@@ -106,7 +109,7 @@ periodicBasedPrediction = function(data, dt, thresholdName, thresholdMode, index
   D_2_2 = f(y,sorted_best_coe[[7]]$a[[1]],sorted_best_coe[[7]]$b[[1]],sorted_best_coe[[7]]$c[[1]],sorted_best_coe[[7]]$d[[1]])
   D_3_1 = f(y,sorted_best_coe[[8]]$a[[1]],sorted_best_coe[[8]]$b[[1]],sorted_best_coe[[8]]$c[[1]],sorted_best_coe[[8]]$d[[1]])
 
-  for(k in seq(coeLength - predictionTerm + 1, coeLength, by = 1)){
+  for(k in seq(coeLength - PredictionTerm + 1, coeLength, by = 1)){
       Cs[[k]][[4]][1] = C_4_1[k]
 
       Ds[[k]][[2]][1] = D_1_1[[k]]
@@ -119,30 +122,30 @@ periodicBasedPrediction = function(data, dt, thresholdName, thresholdMode, index
   }
 
 
-  denoiseDs = ThresholdForGroups(Ds = Ds, thresholdMode = thresholdMode ,thresholdName = thresholdName ,dt = dt,groups=0 ,initThresholdvalue = 1)
+  denoiseDs = ThresholdForGroups(Ds = Ds, ThresholdMode = ThresholdMode ,ThresholdName = ThresholdName ,DataTransform = DataTransform, Groups=0 ,InitThresholdValue = InitThresholdValue)
 
-  i_groups = inverseHaarWaveletTransformForGroups(Cs,denoiseDs)
+  i_groups = InverseHaarWaveletTransformForGroups(Cs,denoiseDs)
   i_groups = lapply(i_groups, function(x) x*8**0.5)
 
-  allData = movingAverage(i_groups,term)
+  allData = MovingAverage(i_groups,Term)
 
   if(dt == "A1"){
     # Perform inverse Anscombe data conversion
-    allData = inverseAnscombeTransformFromGroup(allData,var);
+    allData = InverseAnscombeTransformFromGroup(allData,var);
   } else if(dt == "A2"){
     # Perform inverse Anscombe data conversion
-    allData = inverseAnscombeTransform2FromGroup(allData,var);
+    allData = InverseAnscombeTransform2FromGroup(allData,var);
   } else if(dt == "A3"){
     # Perform inverse Anscombe data conversion
-    allData = inverseAnscombeTransform3FromGroup(allData,var);
+    allData = InverseAnscombeTransform3FromGroup(allData,var);
   } else if(dt == "B1"){
     # Perform inverse Anscombe data conversion
-    allData = inverseBartlettTransformFromGroup(allData,var);
+    allData = InverseBartlettTransformFromGroup(allData,var);
   } else if(dt == "B2"){
     # Perform inverse Anscombe data conversion
-    allData = inverseBartlettTransform2FromGroup(allData,var);
+    allData = InverseBartlettTransform2FromGroup(allData,var);
   } else if (dt == "Fr") {
-    allData = inverseFreemanTransformFromGroup(allData,var)
+    allData = InverseFreemanTransformFromGroup(allData,var)
   } else{
     allData = allData
   }
@@ -151,15 +154,16 @@ periodicBasedPrediction = function(data, dt, thresholdName, thresholdMode, index
       tmp_best_coe = data.frame(a = sorted_best_coe[[m]]$a[[1]],b = sorted_best_coe[[m]]$b[[1]],c = sorted_best_coe[[m]]$c[[1]],d = sorted_best_coe[[m]]$d[[1]])
       best_coe = rbind(best_coe, tmp_best_coe)
   }
-  predictionData = list(predictionData=tail(allData,predictionTerm), regressionCoefficient = best_coe)
+  predictionData = list(predictionData=tail(allData,PredictionTerm), regressionCoefficient = best_coe)
   return(predictionData)
 }
 
-quatraticBasedPrediction = function(data, dt, thresholdName, thresholdMode, index, initThresholdvalue, predictionPercentage, term){
-  term = length(data)
-  data = wse(data = data, dt = dt, thresholdName = thresholdName, thresholdMode = thresholdMode, index = index, initThresholdvalue = initThresholdvalue)
-  # set the prediction term
-  predictionTerm = floor((1 - predictionPercentage) * term)
+QuatraticBasedPrediction = function(Data, DataTransform, ThresholdName, ThresholdMode, Index, PredictionPercentage){
+  Term = length(Data)
+  data = Wse(Data = Data, DataTransform = DataTransform, ThresholdName = ThresholdName, 
+            ThresholdMode = ThresholdMode, Var = Var, Index = Index, InitThresholdValue = InitThresholdValue)
+  # set the prediction Term
+  PredictionTerm = floor((1 - predictionPercentage) * Term)
 
   # Set the number of CPU cores to use
   num_cores = detectCores()
@@ -167,8 +171,8 @@ quatraticBasedPrediction = function(data, dt, thresholdName, thresholdMode, inde
   registerDoParallel(cl)
 
   # definition of data
-  Cs = data$cs
-  dDs = data$denoisedDs
+  Cs = data$Cs
+  dDs = data$DenoisedDs
 
   coe_length = length(Cs)
 
@@ -185,7 +189,7 @@ quatraticBasedPrediction = function(data, dt, thresholdName, thresholdMode, inde
   # coe_name_list
   coe_name = list("C[4][1]","Donise_D[1][1]","Donise_D[1][2]","Donise_D[1][3]","Donise_D[1][4]","Donise_D[2][1]","Donise_D[2][2]","Donise_D[3][1]")
 
-  tmp_num = (term - predictionTerm) %/% 8
+  tmp_num = (Term - PredictionTerm) %/% 8
   for(j in seq(1, (tmp_num-1) * 8 + 1, by=8)){
       tmp_Cs_4_1 = c(tmp_Cs_4_1,Cs[[j]][[4]][1])
 
@@ -215,9 +219,9 @@ quatraticBasedPrediction = function(data, dt, thresholdName, thresholdMode, inde
       a_data = data.frame(mse = 0, a = 0, b = 0, c = 0)
   }
   else{
-      for(sub_a in seq(0, 10, by = 0.5)){
-          for(sub_b in seq(0, 10, by = 0.5)){
-              for(sub_c in seq(0, 10, by = 0.5)){
+      for(sub_a in seq(0, 1, by = 0.5)){
+          for(sub_b in seq(0, 1, by = 0.5)){
+              for(sub_c in seq(0, 1, by = 0.5)){
                   fit = nls(tmp_coe ~ f(x, a, b, c), start = list(a =  sub_a, b = sub_b, c = sub_c), control=nls.control(warnOnly=TRUE))
                   params = coef(fit)
                   pre = f(x, params[1], params[2], params[3])
@@ -242,7 +246,7 @@ quatraticBasedPrediction = function(data, dt, thresholdName, thresholdMode, inde
   # stop cal execution time
   time = toc()
 
-  y = c(1:(term %/%8 + 1))
+  y = c(1:(Term %/%8 + 1))
   C_4_1 = f(y,sorted_best_coe[[1]]$a[[1]],sorted_best_coe[[1]]$b[[1]],sorted_best_coe[[1]]$c[[1]])
   D_1_1 = f(y,sorted_best_coe[[2]]$a[[1]],sorted_best_coe[[2]]$b[[1]],sorted_best_coe[[2]]$c[[1]])
   D_1_2 = f(y,sorted_best_coe[[3]]$a[[1]],sorted_best_coe[[3]]$b[[1]],sorted_best_coe[[3]]$c[[1]])
@@ -252,7 +256,7 @@ quatraticBasedPrediction = function(data, dt, thresholdName, thresholdMode, inde
   D_2_2 = f(y,sorted_best_coe[[7]]$a[[1]],sorted_best_coe[[7]]$b[[1]],sorted_best_coe[[7]]$c[[1]])
   D_3_1 = f(y,sorted_best_coe[[8]]$a[[1]],sorted_best_coe[[8]]$b[[1]],sorted_best_coe[[8]]$c[[1]])
 
-  for(k in seq(1, term%/%8+1, by = 1)){
+  for(k in seq(1, Term%/%8+1, by = 1)){
     Cs[[k]][[4]][1] = C_4_1[k]
 
     dDs[[k]][[2]][1] = D_1_1[[k]]
@@ -263,10 +267,10 @@ quatraticBasedPrediction = function(data, dt, thresholdName, thresholdMode, inde
     dDs[[k]][[3]][2] = D_2_2[[k]]
     dDs[[k]][[4]][1] = D_3_1[[k]]
   }
-  i_groups = inverseHaarWaveletTransformForGroups(Cs,dDs)
+  i_groups = InverseHaarWaveletTransformForGroups(Cs,dDs)
   i_groups = lapply(i_groups, function(x) x*8**0.5)
 
-  allData = movingAverage(i_groups,term)
+  allData = MovingAverage(i_groups,Term)
   if(dt == "A1"){
     # Perform inverse Anscombe data conversion
     allData = inverseAnscombeTransformFromGroup(allData,var);
@@ -292,6 +296,6 @@ quatraticBasedPrediction = function(data, dt, thresholdName, thresholdMode, inde
       tmp_best_coe = data.frame(a = sorted_best_coe[[m]]$a[[1]],b = sorted_best_coe[[m]]$b[[1]],c = sorted_best_coe[[m]]$c[[1]])
       best_coe = rbind(best_coe, tmp_best_coe)
   }
-  predictionData = list(predictionData=tail(allData,predictionTerm), regressionCoefficient = best_coe)
+  predictionData = list(predictionData=tail(allData,PredictionTerm), regressionCoefficient = best_coe)
   return(predictionData)
 }
